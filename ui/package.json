@@ -1,0 +1,17 @@
+{
+  "name": "text2sql-ui",
+  "version": "1.0.0",
+  "description": "Local UI for Text2SQL Agent with Grid.js table rendering",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "optionalDependencies": {
+    "google-auth-library": "^9.0.0"
+  }
+}

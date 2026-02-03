@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text2SQL Agent</title>
+
+    <!-- Grid.js CSS -->
+    <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
+
+    <style>
+        :root {
+            --bg-primary: #0f0f0f;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #252525;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --border-color: #333;
+            --success: #22c55e;
+            --error: #ef4444;
+            --input-bg: #1a1a1a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .header-title svg {
+            width: 28px;
+            height: 28px;
+            color: var(--accent);
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .header-controls select {
+            background: var(--input-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .status-dot.disconnected {
+            background: var(--error);
+        }
+
+        /* Chat Container */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .messages-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 20px;
+        }
+
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Message Styles */
+        .message {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+        }
+
+        .message.user {
+            background: var(--bg-tertiary);
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: var(--accent);
+            color: white;
+        }
+
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+
+        .message-content {
+            flex: 1;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+
+        .message-content p {
+            margin-bottom: 12px;
+        }
+
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Typing indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 4px 0;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* Grid.js Dark Theme */
+        .gridjs-container {
+            margin: 16px 0;
+        }
+
+        .gridjs-wrapper {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .gridjs-table {
+            background: var(--bg-secondary);
+        }
+
+        .gridjs-th {
+            background: var(--bg-tertiary) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+            font-weight: 600;
+        }
+
+        .gridjs-td {
+            background: var(--bg-secondary) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .gridjs-tr:hover .gridjs-td {
+            background: var(--bg-tertiary) !important;
+        }
+
+        .gridjs-footer {
+            background: var(--bg-tertiary) !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-secondary) !important;
+        }
+
+        .gridjs-pagination {
+            color: var(--text-secondary) !important;
+        }
+
+        .gridjs-pagination button {
+            background: var(--bg-secondary) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .gridjs-pagination button:hover:not(:disabled) {
+            background: var(--bg-tertiary) !important;
+        }
+
+        .gridjs-pagination button:disabled {
+            opacity: 0.5;
+        }
+
+        .gridjs-pagination .gridjs-currentPage {
+            background: var(--accent) !important;
+            color: white !important;
+        }
+
+        .gridjs-search {
+            background: var(--bg-secondary) !important;
+        }
+
+        .gridjs-search input {
+            background: var(--input-bg) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .gridjs-head {
+            background: var(--bg-tertiary) !important;
+        }
+
+        .gridjs-summary {
+            color: var(--text-secondary) !important;
+        }
+
+        /* Error styles */
+        .error-block {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 12px 0;
+            color: var(--error);
+        }
+
+        /* Input Area */
+        .input-area {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            margin-top: 16px;
+        }
+
+        .input-area textarea {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 15px;
+            resize: none;
+            outline: none;
+            font-family: inherit;
+            line-height: 1.5;
+            min-height: 24px;
+            max-height: 200px;
+        }
+
+        .input-area textarea::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .send-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: var(--accent-hover);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .cancel-btn {
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: none;
+        }
+
+        .cancel-btn.visible {
+            display: flex;
+        }
+
+        /* Welcome message */
+        .welcome {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+
+        .welcome h2 {
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .welcome p {
+            max-width: 500px;
+            margin: 0 auto 24px;
+            line-height: 1.6;
+        }
+
+        .example-queries {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .example-query {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-query:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        /* Code blocks */
+        code {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: var(--bg-tertiary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            Text2SQL Agent
+        </div>
+        <div class="header-controls">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Connected</span>
+            </div>
+            <select id="regionSelector" onchange="switchRegion()">
+                <option value="europe">Europe</option>
+                <option value="us">US</option>
+            </select>
+            <button onclick="newChat()" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 8px; cursor: pointer;">
+                New Chat
+            </button>
+        </div>
+    </header>
+
+    <div class="chat-container">
+        <div class="messages-wrapper" id="messagesWrapper">
+            <div class="messages" id="messages">
+                <div class="welcome">
+                    <h2>Welcome to Text2SQL Agent</h2>
+                    <p>Ask questions about your data in natural language. I'll convert them to SQL queries and show you the results.</p>
+                    <div class="example-queries">
+                        <span class="example-query" onclick="sendExample(this)">Show me 5 offers</span>
+                        <span class="example-query" onclick="sendExample(this)">How many materials are there?</span>
+                        <span class="example-query" onclick="sendExample(this)">List all procurements</span>
+                        <span class="example-query" onclick="sendExample(this)">Show transport records</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <textarea
+                id="messageInput"
+                placeholder="Ask a question about your data..."
+                rows="1"
+                onkeydown="handleKeydown(event)"
+                oninput="autoResize(this)"
+            ></textarea>
+            <button class="cancel-btn" id="cancelBtn" onclick="cancelRequest()">Cancel</button>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                Send
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Grid.js Library -->
+    <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+
+    <script>
+        // Configuration
+        const REGIONS = {
+            europe: 'https://text2sql-agent-762263377120.europe-west1.run.app',
+            us: 'https://text2sql-agent-762263377120.us-central1.run.app'
+        };
+
+        let currentRegion = localStorage.getItem('text2sql_region') || 'europe';
+        let sessionId = localStorage.getItem('text2sql_sessionId') || null;
+        const userId = localStorage.getItem('text2sql_userId') || 'user-' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('text2sql_userId', userId);
+
+        let isProcessing = false;
+        let currentAbortController = null;
+        let gridInstances = [];
+
+        // Initialize
+        document.getElementById('regionSelector').value = currentRegion;
+        init();
+
+        async function init() {
+            if (!sessionId) {
+                await createSession();
+            }
+            checkConnection();
+        }
+
+        async function createSession() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, appName: 'text2sql_agent' })
+                });
+                const data = await response.json();
+                if (data.id) {
+                    sessionId = data.id;
+                    localStorage.setItem('text2sql_sessionId', sessionId);
+                }
+            } catch (error) {
+                console.error('Failed to create session:', error);
+            }
+        }
+
+        async function checkConnection() {
+            try {
+                const response = await fetch('/api/apps');
+                const data = await response.json();
+                if (data.includes('text2sql_agent')) {
+                    setStatus(true);
+                } else {
+                    setStatus(false);
+                }
+            } catch (error) {
+                setStatus(false);
+            }
+        }
+
+        function setStatus(connected) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (connected) {
+                dot.classList.remove('disconnected');
+                text.textContent = 'Connected';
+            } else {
+                dot.classList.add('disconnected');
+                text.textContent = 'Disconnected';
+            }
+        }
+
+        function switchRegion() {
+            currentRegion = document.getElementById('regionSelector').value;
+            localStorage.setItem('text2sql_region', currentRegion);
+            sessionId = null;
+            localStorage.removeItem('text2sql_sessionId');
+            createSession();
+        }
+
+        function newChat() {
+            sessionId = null;
+            localStorage.removeItem('text2sql_sessionId');
+            document.getElementById('messages').innerHTML = `
+                <div class="welcome">
+                    <h2>Welcome to Text2SQL Agent</h2>
+                    <p>Ask questions about your data in natural language. I'll convert them to SQL queries and show you the results.</p>
+                    <div class="example-queries">
+                        <span class="example-query" onclick="sendExample(this)">Show me 5 offers</span>
+                        <span class="example-query" onclick="sendExample(this)">How many materials are there?</span>
+                        <span class="example-query" onclick="sendExample(this)">List all procurements</span>
+                        <span class="example-query" onclick="sendExample(this)">Show transport records</span>
+                    </div>
+                </div>
+            `;
+            // Clear grid instances
+            gridInstances.forEach(g => g.destroy());
+            gridInstances = [];
+            createSession();
+        }
+
+        function sendExample(el) {
+            document.getElementById('messageInput').value = el.textContent;
+            sendMessage();
+        }
+
+        function handleKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        }
+
+        function cancelRequest() {
+            if (currentAbortController) {
+                currentAbortController.abort();
+                currentAbortController = null;
+            }
+            isProcessing = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('cancelBtn').classList.remove('visible');
+        }
+
+        function addMessage(content, role, isStreaming = false) {
+            const messagesDiv = document.getElementById('messages');
+            const welcome = messagesDiv.querySelector('.welcome');
+            if (welcome) welcome.remove();
+
+            const msgId = 'msg-' + Date.now();
+            const msg = document.createElement('div');
+            msg.className = `message ${role}`;
+            msg.id = msgId;
+
+            const avatarText = role === 'user' ? 'You' : 'AI';
+
+            msg.innerHTML = `
+                <div class="message-avatar">${avatarText}</div>
+                <div class="message-content" id="${msgId}-content">
+                    ${isStreaming ? '<div class="typing-indicator"><span></span><span></span><span></span></div>' : formatMessage(content)}
+                </div>
+            `;
+
+            messagesDiv.appendChild(msg);
+            scrollToBottom();
+            return msgId;
+        }
+
+        function formatMessage(text) {
+            if (!text) return '';
+
+            // Escape HTML
+            let formatted = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // Code blocks
+            formatted = formatted.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+
+            // Inline code
+            formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+            // Bold
+            formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+            // Italic
+            formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+            // Line breaks
+            formatted = formatted.replace(/\n/g, '<br>');
+
+            return formatted;
+        }
+
+        function scrollToBottom() {
+            const wrapper = document.getElementById('messagesWrapper');
+            wrapper.scrollTop = wrapper.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message || isProcessing) return;
+
+            isProcessing = true;
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('cancelBtn').classList.add('visible');
+
+            // Add user message
+            addMessage(message, 'user');
+            input.value = '';
+            input.style.height = 'auto';
+
+            // Add assistant message placeholder
+            const streamingMsgId = addMessage('', 'assistant', true);
+
+            currentAbortController = new AbortController();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        sessionId,
+                        userId,
+                        appName: 'text2sql_agent'
+                    }),
+                    signal: currentAbortController.signal
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let assistantMessage = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+
+                        const jsonStr = line.substring(5).trim();
+                        if (!jsonStr || jsonStr === '[DONE]') continue;
+
+                        try {
+                            const event = JSON.parse(jsonStr);
+
+                            if (event.content?.parts) {
+                                for (const part of event.content.parts) {
+                                    if (part.text) {
+                                        assistantMessage = part.text;
+                                        // Update streaming message
+                                        const contentEl = document.getElementById(`${streamingMsgId}-content`);
+                                        if (contentEl) {
+                                            contentEl.innerHTML = formatMessage(assistantMessage);
+                                            scrollToBottom();
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            // Ignore parse errors
+                        }
+                    }
+                }
+
+                // Final update and render tables
+                const contentEl = document.getElementById(`${streamingMsgId}-content`);
+                if (contentEl) {
+                    if (assistantMessage) {
+                        contentEl.innerHTML = formatMessage(assistantMessage);
+                        renderGridTables(contentEl);
+                    } else {
+                        contentEl.innerHTML = formatMessage('Sorry, I could not process your request.');
+                    }
+                }
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    const contentEl = document.getElementById(`${streamingMsgId}-content`);
+                    if (contentEl) {
+                        contentEl.innerHTML = `<div class="error-block">Error: ${error.message}</div>`;
+                    }
+                }
+            } finally {
+                isProcessing = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('cancelBtn').classList.remove('visible');
+                currentAbortController = null;
+                scrollToBottom();
+            }
+        }
+
+        // Parse markdown tables and render with Grid.js
+        function renderGridTables(container) {
+            const content = container.innerHTML;
+
+            // Find markdown table patterns
+            const tableRegex = /\|(.+)\|\s*\n\|([-:\s|]+)\|\s*\n((?:\|.+\|\s*\n?)+)/g;
+            let match;
+            let newContent = content;
+            let tableIndex = 0;
+
+            while ((match = tableRegex.exec(content)) !== null) {
+                const headerRow = match[1];
+                const dataRows = match[3];
+
+                // Parse headers
+                const headers = headerRow.split('|')
+                    .map(h => h.trim())
+                    .filter(h => h);
+
+                // Parse data rows
+                const rows = dataRows.trim().split('\n').map(row => {
+                    return row.split('|')
+                        .map(cell => cell.trim())
+                        .filter(cell => cell !== '');
+                }).filter(row => row.length > 0);
+
+                if (headers.length > 0 && rows.length > 0) {
+                    const containerId = `grid-${Date.now()}-${tableIndex}`;
+                    const placeholder = `<div id="${containerId}" class="gridjs-container"></div>`;
+                    newContent = newContent.replace(match[0], placeholder);
+
+                    // Schedule Grid.js rendering after DOM update
+                    setTimeout(() => {
+                        const gridContainer = document.getElementById(containerId);
+                        if (gridContainer) {
+                            const grid = new gridjs.Grid({
+                                columns: headers,
+                                data: rows,
+                                pagination: rows.length > 10 ? { limit: 10 } : false,
+                                search: rows.length > 5,
+                                sort: true,
+                                resizable: true,
+                                style: {
+                                    table: { 'font-size': '14px' }
+                                }
+                            }).render(gridContainer);
+                            gridInstances.push(grid);
+                        }
+                    }, 0);
+
+                    tableIndex++;
+                }
+            }
+
+            container.innerHTML = newContent;
+        }
+    </script>
+</body>
+</html>
