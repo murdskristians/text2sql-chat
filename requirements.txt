@@ -1,4 +1,6 @@
-google-adk
+# Pinned: unpinned installs pulled a newer ADK into the image than the one
+# verified locally, and agent discovery differs between versions.
+google-adk==1.27.5
 google-cloud-bigquery>=3.0.0
 python-dotenv>=1.0.0
 pandas>=2.0.0
