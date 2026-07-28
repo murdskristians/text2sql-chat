@@ -32,15 +32,16 @@ services:
     rootDir: ui
     buildCommand: npm install
     startCommand: node server.js
-    healthCheckPath: /api/health
+    # Serves index.html and touches nothing downstream. Do NOT use /api/health:
+    # it proxies to the agent, so the UI would fail its own health check
+    # whenever the agent is redeploying or asleep.
+    healthCheckPath: /
     envVars:
-      # Render fills this from the agent service above, so the two stay wired
-      # together even if the agent's URL changes.
+      # The agent's public URL, set explicitly. fromService/property:host yields
+      # the bare internal name ("reltek-agent") with no domain or scheme, which
+      # is not resolvable from here.
       - key: AGENT_URL
-        fromService:
-          name: reltek-agent
-          type: web
-          property: host
+        value: https://reltek-agent.onrender.com
 
       # Render terminates TLS at a proxy, so the real client IP is in
       # X-Forwarded-For. Lets the rate limiter see per-visitor IPs.
