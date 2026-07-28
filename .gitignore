@@ -1,0 +1,24 @@
+# Secrets - the agent's Gemini key lives here. Never commit.
+.env
+*.env
+!.env.example
+
+# Service account keys
+*-key.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# ADK local state (sessions, artifacts)
+.adk/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

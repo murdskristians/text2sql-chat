@@ -4,6 +4,7 @@ BigQuery Tools for Text-to-SQL Agent.
 Provides tools for fetching schema information and executing SQL queries.
 """
 
+import json
 import os
 from typing import Optional, List, Dict, Any
 from google.cloud import bigquery
@@ -12,23 +13,40 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Reltek demo dataset. Synthetic data only - safe to expose publicly.
+# Override with GCP_PROJECT_ID / BIGQUERY_DATASET.
+DEFAULT_PROJECT = os.environ.get('GCP_PROJECT_ID', 'smartsuitebigqueryproject')
+DEFAULT_DATASET = os.environ.get('BIGQUERY_DATASET', 'smartsuite_demo')
+DEFAULT_TABLE = 'offers'
+
 # Initialize BigQuery client
 _client: Optional[bigquery.Client] = None
 
 
 def get_bigquery_client() -> bigquery.Client:
-    """Get or create a BigQuery client."""
+    """Get or create a BigQuery client.
+
+    Hosted deployments (Render, Railway) have no gcloud ADC, so the service
+    account key is passed whole as GOOGLE_APPLICATION_CREDENTIALS_JSON. Locally
+    that variable is unset and the gcloud login is used instead.
+    """
     global _client
     if _client is None:
-        project_id = os.environ.get('GCP_PROJECT_ID', 'hotcode-erp')
-        _client = bigquery.Client(project=project_id)
+        credentials_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        if credentials_json:
+            _client = bigquery.Client.from_service_account_info(
+                json.loads(credentials_json),
+                project=DEFAULT_PROJECT,
+            )
+        else:
+            _client = bigquery.Client(project=DEFAULT_PROJECT)
     return _client
 
 
 def get_table_schema(
-    project_id: str = "hotcode-erp",
-    dataset_id: str = "user_stories",
-    table_id: str = "smartsuite"
+    project_id: str = DEFAULT_PROJECT,
+    dataset_id: str = DEFAULT_DATASET,
+    table_id: str = DEFAULT_TABLE
 ) -> Dict[str, Any]:
     """
     Fetch the schema of a BigQuery table.
@@ -71,8 +89,8 @@ def get_table_schema(
 
 
 def list_available_tables(
-    project_id: str = "hotcode-erp",
-    dataset_id: str = "user_stories"
+    project_id: str = DEFAULT_PROJECT,
+    dataset_id: str = DEFAULT_DATASET
 ) -> List[Dict[str, str]]:
     """
     List all available tables in a BigQuery dataset.
@@ -179,9 +197,9 @@ def execute_sql_query(
 
 
 def get_sample_data(
-    project_id: str = "hotcode-erp",
-    dataset_id: str = "user_stories",
-    table_id: str = "smartsuite",
+    project_id: str = DEFAULT_PROJECT,
+    dataset_id: str = DEFAULT_DATASET,
+    table_id: str = DEFAULT_TABLE,
     limit: int = 5
 ) -> Dict[str, Any]:
     """
@@ -201,9 +219,9 @@ def get_sample_data(
 
 
 def get_column_statistics(
-    project_id: str = "hotcode-erp",
-    dataset_id: str = "user_stories",
-    table_id: str = "smartsuite",
+    project_id: str = DEFAULT_PROJECT,
+    dataset_id: str = DEFAULT_DATASET,
+    table_id: str = DEFAULT_TABLE,
     column_name: str = ""
 ) -> Dict[str, Any]:
     """

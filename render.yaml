@@ -1,0 +1,48 @@
+services:
+  # The ADK agent. Docker rather than the python runtime because the agent is
+  # started by `adk api_server`, not a plain uvicorn entrypoint.
+  - type: web
+    name: reltek-agent
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /list-apps
+    envVars:
+      - key: GCP_PROJECT_ID
+        value: smartsuitebigqueryproject
+
+      # Synthetic demo data only. Never point this at smartsuite_chris:
+      # the deployment is public and unauthenticated.
+      - key: BIGQUERY_DATASET
+        value: smartsuite_demo
+
+      # Secrets: set these in the Render dashboard, never in this file.
+      #   GOOGLE_API_KEY                      - from aistudio.google.com/app/apikey
+      #   GOOGLE_APPLICATION_CREDENTIALS_JSON - the bq-demo-reader key, pasted whole
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false
+
+  # The chat UI. A thin Express proxy plus static files - no domain logic.
+  - type: web
+    name: reltek-ui
+    runtime: node
+    plan: free
+    rootDir: ui
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      # Render fills this from the agent service above, so the two stay wired
+      # together even if the agent's URL changes.
+      - key: AGENT_URL
+        fromService:
+          name: reltek-agent
+          type: web
+          property: host
+
+      # Render terminates TLS at a proxy, so the real client IP is in
+      # X-Forwarded-For. Lets the rate limiter see per-visitor IPs.
+      - key: TRUST_PROXY
+        value: "true"
