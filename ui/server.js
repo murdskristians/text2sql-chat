@@ -5,16 +5,95 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Agent API configuration
-const AGENT_URL = process.env.AGENT_URL || 'https://text2sql-agent-762263377120.europe-west1.run.app';
+// Agent API configuration. Defaults to a local agent: the old Cloud Run
+// deployment lives in a project we no longer control, so falling back to it
+// would silently answer from stale data.
+//
+// Render's fromService injects a bare hostname with no scheme, which fetch()
+// rejects, so add one when it's missing.
+const rawAgentUrl = process.env.AGENT_URL || 'http://localhost:8000';
+const AGENT_URL = /^https?:\/\//.test(rawAgentUrl)
+    ? rawAgentUrl.replace(/\/+$/, '')
+    : `https://${rawAgentUrl.replace(/\/+$/, '')}`;
 
 // Google Cloud configuration (for authenticated requests)
-const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || 'hotcode-erp';
+const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || 'smartsuitebigqueryproject';
 const GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || 'europe-west1';
+
+// Per-IP rate limiting for the public demo. The agent is unauthenticated, so
+// anything that costs Gemini quota or BigQuery scans needs a cap. Held in
+// memory, which is fine on a single instance but would need Redis to scale out.
+const RULES = [
+    { prefix: '/api/chat', limit: 12, window: 300 },     // 12 questions / 5 min
+    { prefix: '/api/session', limit: 30, window: 300 },
+];
+const GLOBAL_RULE = { limit: 120, window: 60 };
+
+// Render terminates TLS at a proxy, so the real client IP is in
+// X-Forwarded-For. Only trust it when we know we're behind a proxy - otherwise
+// a caller could spoof the header to reset their own limit.
+const TRUST_PROXY = ['1', 'true', 'yes'].includes(
+    (process.env.TRUST_PROXY || '').toLowerCase()
+);
+if (TRUST_PROXY) app.set('trust proxy', 1);
+
+const hits = new Map();
+
+function overLimit(key, limit, window, now) {
+    const cutoff = now - window * 1000;
+    const recent = (hits.get(key) || []).filter((t) => t >= cutoff);
+    if (recent.length >= limit) {
+        hits.set(key, recent);
+        return true;
+    }
+    recent.push(now);
+    hits.set(key, recent);
+    return false;
+}
+
+function rateLimit(req, res, next) {
+    // Preflight costs nothing and must not consume budget, or a browser's
+    // OPTIONS could exhaust the limit before the real request is sent.
+    if (req.method === 'OPTIONS') return next();
+
+    const ip = TRUST_PROXY ? req.ip : req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+
+    if (overLimit(`${ip}:*`, GLOBAL_RULE.limit, GLOBAL_RULE.window, now)) {
+        return tooMany(res, GLOBAL_RULE.window);
+    }
+
+    // Mounted at /api, so req.path has that prefix stripped - rejoin it or the
+    // per-route rules below never match.
+    const fullPath = (req.baseUrl || '') + req.path;
+    const rule = RULES.find((r) => fullPath.startsWith(r.prefix));
+    if (rule && overLimit(`${ip}:${rule.prefix}`, rule.limit, rule.window, now)) {
+        return tooMany(res, rule.window);
+    }
+
+    next();
+}
+
+function tooMany(res, window) {
+    return res.status(429).set('Retry-After', String(window)).json({
+        error:
+            'Rate limit reached for this demo. Please wait up to ' +
+            `${Math.floor(window / 60) || 1} minute(s) and try again.`,
+    });
+}
+
+// Drop IPs that have gone quiet, so the map can't grow without bound.
+setInterval(() => {
+    const cutoff = Date.now() - 300 * 1000;
+    for (const [key, times] of hits) {
+        if (!times.some((t) => t >= cutoff)) hits.delete(key);
+    }
+}, 60 * 1000).unref();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api', rateLimit);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Helper function to get authentication headers if needed
@@ -158,7 +237,7 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\n🚀 Text2SQL UI running at http://localhost:${PORT}`);
+    console.log(`\n🚀 Reltek Data Assistant UI running at http://localhost:${PORT}`);
     console.log(`📡 Agent URL: ${AGENT_URL}`);
     console.log(`☁️  Project: ${GOOGLE_CLOUD_PROJECT}`);
     console.log(`📍 Location: ${GOOGLE_CLOUD_LOCATION}\n`);

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text2SQL Agent</title>
+    <title>Reltek Data Assistant</title>
 
     <!-- Grid.js CSS -->
     <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
@@ -420,7 +420,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
-            Text2SQL Agent
+            Reltek Data Assistant
         </div>
         <div class="header-controls">
             <div class="status-indicator">
@@ -441,13 +441,13 @@
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="messages" id="messages">
                 <div class="welcome">
-                    <h2>Welcome to Text2SQL Agent</h2>
-                    <p>Ask questions about your data in natural language. I'll convert them to SQL queries and show you the results.</p>
+                    <h2>Welcome to the Reltek Data Assistant</h2>
+                    <p>Ask about Reltek's tenders, supplier offers, materials, staff and deliveries in plain language. I'll turn it into SQL and show you the results. Demo data is synthetic.</p>
                     <div class="example-queries">
                         <span class="example-query" onclick="sendExample(this)">Show me 5 offers</span>
                         <span class="example-query" onclick="sendExample(this)">How many materials are there?</span>
-                        <span class="example-query" onclick="sendExample(this)">List all procurements</span>
-                        <span class="example-query" onclick="sendExample(this)">Show transport records</span>
+                        <span class="example-query" onclick="sendExample(this)">Which supplier won the most tenders?</span>
+                        <span class="example-query" onclick="sendExample(this)">Total savings by department</span>
                     </div>
                 </div>
             </div>
@@ -558,13 +558,13 @@
             localStorage.removeItem('text2sql_sessionId');
             document.getElementById('messages').innerHTML = `
                 <div class="welcome">
-                    <h2>Welcome to Text2SQL Agent</h2>
-                    <p>Ask questions about your data in natural language. I'll convert them to SQL queries and show you the results.</p>
+                    <h2>Welcome to the Reltek Data Assistant</h2>
+                    <p>Ask about Reltek's tenders, supplier offers, materials, staff and deliveries in plain language. I'll turn it into SQL and show you the results. Demo data is synthetic.</p>
                     <div class="example-queries">
                         <span class="example-query" onclick="sendExample(this)">Show me 5 offers</span>
                         <span class="example-query" onclick="sendExample(this)">How many materials are there?</span>
-                        <span class="example-query" onclick="sendExample(this)">List all procurements</span>
-                        <span class="example-query" onclick="sendExample(this)">Show transport records</span>
+                        <span class="example-query" onclick="sendExample(this)">Which supplier won the most tenders?</span>
+                        <span class="example-query" onclick="sendExample(this)">Total savings by department</span>
                     </div>
                 </div>
             `;
@@ -760,7 +760,10 @@
 
         // Parse markdown tables and render with Grid.js
         function renderGridTables(container) {
-            const content = container.innerHTML;
+            // formatMessage() has already replaced every newline with <br>, but the
+            // table regex below matches on real newlines. Restore them for matching
+            // and convert whatever survives back at the end.
+            const content = container.innerHTML.replace(/<br\s*\/?>/gi, '\n');
 
             // Find markdown table patterns
             const tableRegex = /\|(.+)\|\s*\n\|([-:\s|]+)\|\s*\n((?:\|.+\|\s*\n?)+)/g;
@@ -772,17 +775,23 @@
                 const headerRow = match[1];
                 const dataRows = match[3];
 
+                // Split "| a | b |" into cells, dropping only the empty strings
+                // either side of the outer pipes - a blank cell in the middle is
+                // a real NULL and must be kept, or the row shifts left.
+                const splitRow = (row) => {
+                    const cells = row.split('|').map(cell => cell.trim());
+                    if (cells[0] === '') cells.shift();
+                    if (cells[cells.length - 1] === '') cells.pop();
+                    return cells;
+                };
+
                 // Parse headers
-                const headers = headerRow.split('|')
-                    .map(h => h.trim())
-                    .filter(h => h);
+                const headers = splitRow(headerRow);
 
                 // Parse data rows
-                const rows = dataRows.trim().split('\n').map(row => {
-                    return row.split('|')
-                        .map(cell => cell.trim())
-                        .filter(cell => cell !== '');
-                }).filter(row => row.length > 0);
+                const rows = dataRows.trim().split('\n')
+                    .map(splitRow)
+                    .filter(row => row.length > 0);
 
                 if (headers.length > 0 && rows.length > 0) {
                     const containerId = `grid-${Date.now()}-${tableIndex}`;
@@ -812,7 +821,7 @@
                 }
             }
 
-            container.innerHTML = newContent;
+            container.innerHTML = newContent.replace(/\n/g, '<br>');
         }
     </script>
 </body>
