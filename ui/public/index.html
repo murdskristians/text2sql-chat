@@ -176,6 +176,31 @@
             padding: 4px 0;
         }
 
+        /* Progress label shown while the answer is being prepared. The reply is
+           rendered in one go at the end, so no half-written text is ever shown. */
+        .thinking {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .thinking-status {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .thinking-status:after {
+            content: '';
+            animation: ellipsis 1.4s infinite steps(1);
+        }
+
+        @keyframes ellipsis {
+            0%   { content: ''; }
+            25%  { content: '.'; }
+            50%  { content: '..'; }
+            75%  { content: '...'; }
+        }
+
         .typing-indicator span {
             width: 8px;
             height: 8px;
@@ -671,7 +696,7 @@
             msg.innerHTML = `
                 <div class="message-avatar">${avatarText}</div>
                 <div class="message-content" id="${msgId}-content">
-                    ${isStreaming ? '<div class="typing-indicator"><span></span><span></span><span></span></div>' : formatMessage(content)}
+                    ${isStreaming ? '<div class="thinking"><div class="typing-indicator"><span></span><span></span><span></span></div><span class="thinking-status" id="' + msgId + '-status">Thinking</span></div>' : formatMessage(content)}
                 </div>
             `;
 
@@ -822,7 +847,13 @@
                 const decoder = new TextDecoder();
                 let buffer = '';
                 let assistantMessage = '';
+                let partialText = '';
                 const executedSql = [];
+
+                const setStatus = (text) => {
+                    const el = document.getElementById(`${streamingMsgId}-status`);
+                    if (el) el.textContent = text;
+                };
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -850,14 +881,23 @@
                                     if (call?.name === 'execute_sql_query' && call.args?.query) {
                                         const sql = call.args.query.trim();
                                         if (!executedSql.includes(sql)) executedSql.push(sql);
+                                        setStatus('Running SQL');
                                     }
+                                    if (part.functionResponse) {
+                                        setStatus('Preparing the answer');
+                                    }
+                                    // Deliberately not painted yet - the reply is
+                                    // rendered once, when complete. The agent
+                                    // sends the answer as partial chunks and then
+                                    // repeats it whole with partial:false, so the
+                                    // final event is what we keep. Chunks are
+                                    // still collected as a fallback in case a
+                                    // stream ends without that final event.
                                     if (part.text) {
-                                        assistantMessage = part.text;
-                                        // Update streaming message
-                                        const contentEl = document.getElementById(`${streamingMsgId}-content`);
-                                        if (contentEl) {
-                                            contentEl.innerHTML = formatMessage(assistantMessage);
-                                            scrollToBottom();
+                                        if (event.partial) {
+                                            partialText += part.text;
+                                        } else {
+                                            assistantMessage = part.text;
                                         }
                                     }
                                 }
@@ -871,8 +911,9 @@
                 // Final update and render tables
                 const contentEl = document.getElementById(`${streamingMsgId}-content`);
                 if (contentEl) {
-                    if (assistantMessage) {
-                        contentEl.innerHTML = formatMessage(assistantMessage);
+                    const finalText = assistantMessage || partialText;
+                    if (finalText) {
+                        contentEl.innerHTML = formatMessage(finalText);
                         renderGridTables(contentEl);
                     } else {
                         contentEl.innerHTML = formatMessage('Sorry, I could not process your request.');
