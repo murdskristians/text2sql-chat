@@ -281,6 +281,69 @@
             color: var(--error);
         }
 
+        /* SQL disclosure */
+        .sql-disclosure {
+            margin-top: 12px;
+        }
+        .sql-toggle {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: color 150ms ease, border-color 150ms ease;
+        }
+        .sql-toggle:hover {
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+        .sql-panel {
+            margin-top: 10px;
+        }
+        .sql-panel[hidden] {
+            display: none;
+        }
+        .sql-panel pre {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin: 0 0 8px 0;
+            /* Long SELECTs scroll here rather than widening the chat column. */
+            overflow-x: auto;
+        }
+        .sql-panel code {
+            font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+            font-size: 12.5px;
+            line-height: 1.55;
+            white-space: pre;
+            color: #e0e0e0;
+        }
+        .sql-caption {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+        .sql-copy {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .sql-copy:hover {
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+
         /* Input Area */
         .input-area {
             display: flex;
@@ -644,6 +707,67 @@
             return formatted;
         }
 
+        // Shows the SQL the agent actually ran, behind a toggle so it stays out
+        // of the way until asked for. Built with DOM calls rather than an HTML
+        // string so the query text cannot be interpreted as markup.
+        function appendSqlDisclosure(contentEl, queries) {
+            if (!queries || !queries.length) return;
+
+            const wrap = document.createElement('div');
+            wrap.className = 'sql-disclosure';
+
+            const btn = document.createElement('button');
+            btn.className = 'sql-toggle';
+            btn.type = 'button';
+            const label = queries.length > 1
+                ? `View SQL (${queries.length} queries)`
+                : 'View SQL';
+            btn.textContent = label;
+
+            const panel = document.createElement('div');
+            panel.className = 'sql-panel';
+            panel.hidden = true;
+
+            queries.forEach((sql, i) => {
+                if (queries.length > 1) {
+                    const caption = document.createElement('div');
+                    caption.className = 'sql-caption';
+                    caption.textContent = `Query ${i + 1}`;
+                    panel.appendChild(caption);
+                }
+                const pre = document.createElement('pre');
+                const code = document.createElement('code');
+                code.textContent = sql;
+                pre.appendChild(code);
+                panel.appendChild(pre);
+            });
+
+            const copy = document.createElement('button');
+            copy.className = 'sql-copy';
+            copy.type = 'button';
+            copy.textContent = 'Copy';
+            copy.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(queries.join('\n\n'));
+                    copy.textContent = 'Copied';
+                    setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+                } catch {
+                    copy.textContent = 'Copy failed';
+                }
+            };
+            panel.appendChild(copy);
+
+            btn.onclick = () => {
+                panel.hidden = !panel.hidden;
+                btn.textContent = panel.hidden ? label : 'Hide SQL';
+                if (!panel.hidden) scrollToBottom();
+            };
+
+            wrap.appendChild(btn);
+            wrap.appendChild(panel);
+            contentEl.appendChild(wrap);
+        }
+
         function scrollToBottom() {
             const wrapper = document.getElementById('messagesWrapper');
             wrapper.scrollTop = wrapper.scrollHeight;
@@ -698,6 +822,7 @@
                 const decoder = new TextDecoder();
                 let buffer = '';
                 let assistantMessage = '';
+                const executedSql = [];
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -718,6 +843,14 @@
 
                             if (event.content?.parts) {
                                 for (const part of event.content.parts) {
+                                    // The agent announces each query as a tool
+                                    // call before running it. Capture the SQL so
+                                    // it can be shown under the answer.
+                                    const call = part.functionCall;
+                                    if (call?.name === 'execute_sql_query' && call.args?.query) {
+                                        const sql = call.args.query.trim();
+                                        if (!executedSql.includes(sql)) executedSql.push(sql);
+                                    }
                                     if (part.text) {
                                         assistantMessage = part.text;
                                         // Update streaming message
@@ -744,6 +877,8 @@
                     } else {
                         contentEl.innerHTML = formatMessage('Sorry, I could not process your request.');
                     }
+                    // Appended after renderGridTables, which overwrites innerHTML.
+                    appendSqlDisclosure(contentEl, executedSql);
                 }
 
             } catch (error) {
