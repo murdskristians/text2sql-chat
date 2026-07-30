@@ -1,0 +1,8 @@
+[build]
+  # Nothing to compile: public/ is plain HTML, CSS and JS.
+  publish = "public"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

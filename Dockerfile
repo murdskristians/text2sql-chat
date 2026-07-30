@@ -25,4 +25,9 @@ EXPOSE 8000
 #
 # AGENTS_DIR is passed explicitly as /app, which now holds exactly one agent
 # package. Left to its default it resolved to /, publishing an app called "app".
-CMD exec python -m google.adk.cli api_server --port ${PORT:-8000} --host 0.0.0.0 /app
+#
+# ALLOW_ORIGINS is required now that the UI is a static Netlify page calling
+# this server directly from the browser - without it every request is blocked
+# by CORS. Set it to the site's origin in the Render dashboard.
+CMD exec python -m google.adk.cli api_server --port ${PORT:-8000} --host 0.0.0.0 \
+    --allow_origins="${ALLOW_ORIGINS:-*}" /app

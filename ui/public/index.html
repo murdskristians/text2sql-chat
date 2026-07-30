@@ -427,10 +427,6 @@
                 <div class="status-dot" id="statusDot"></div>
                 <span id="statusText">Connected</span>
             </div>
-            <select id="regionSelector" onchange="switchRegion()">
-                <option value="europe">Europe</option>
-                <option value="us">US</option>
-            </select>
             <button onclick="newChat()" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px 16px; border-radius: 8px; cursor: pointer;">
                 New Chat
             </button>
@@ -476,13 +472,15 @@
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
 
     <script>
-        // Configuration
-        const REGIONS = {
-            europe: 'https://text2sql-agent-762263377120.europe-west1.run.app',
-            us: 'https://text2sql-agent-762263377120.us-central1.run.app'
-        };
+        // The agent is called straight from the browser - this page is static,
+        // so there is no server of ours in between. Override for local dev by
+        // setting localStorage.text2sql_agentUrl to http://localhost:8000.
+        const AGENT_URL = (
+            localStorage.getItem('text2sql_agentUrl') ||
+            'https://reltek-agent.onrender.com'
+        ).replace(/\/+$/, '');
+        const APP_NAME = 'text2sql_agent';
 
-        let currentRegion = localStorage.getItem('text2sql_region') || 'europe';
         let sessionId = localStorage.getItem('text2sql_sessionId') || null;
         const userId = localStorage.getItem('text2sql_userId') || 'user-' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('text2sql_userId', userId);
@@ -492,7 +490,6 @@
         let gridInstances = [];
 
         // Initialize
-        document.getElementById('regionSelector').value = currentRegion;
         init();
 
         async function init() {
@@ -503,27 +500,30 @@
         }
 
         async function createSession() {
+            const newId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             try {
-                const response = await fetch('/api/session', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, appName: 'text2sql_agent' })
-                });
-                const data = await response.json();
-                if (data.id) {
-                    sessionId = data.id;
-                    localStorage.setItem('text2sql_sessionId', sessionId);
-                }
+                await fetch(
+                    `${AGENT_URL}/apps/${APP_NAME}/users/${userId}/sessions/${newId}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ state: {} })
+                    }
+                );
             } catch (error) {
                 console.error('Failed to create session:', error);
             }
+            // Keep the id even if the call failed: the agent creates sessions
+            // lazily, and a retry on the next message is better than no id.
+            sessionId = newId;
+            localStorage.setItem('text2sql_sessionId', sessionId);
         }
 
         async function checkConnection() {
             try {
-                const response = await fetch('/api/apps');
+                const response = await fetch(`${AGENT_URL}/list-apps`);
                 const data = await response.json();
-                if (data.includes('text2sql_agent')) {
+                if (data.includes(APP_NAME)) {
                     setStatus(true);
                 } else {
                     setStatus(false);
@@ -543,14 +543,6 @@
                 dot.classList.add('disconnected');
                 text.textContent = 'Disconnected';
             }
-        }
-
-        function switchRegion() {
-            currentRegion = document.getElementById('regionSelector').value;
-            localStorage.setItem('text2sql_region', currentRegion);
-            sessionId = null;
-            localStorage.removeItem('text2sql_sessionId');
-            createSession();
         }
 
         function newChat() {
@@ -678,17 +670,29 @@
             currentAbortController = new AbortController();
 
             try {
-                const response = await fetch('/api/chat', {
+                // The envelope the Express proxy used to build for us. Reads
+                // sessionId at call time so the retry below picks up a new one.
+                const postTurn = () => fetch(`${AGENT_URL}/run_sse`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        message,
-                        sessionId,
-                        userId,
-                        appName: 'text2sql_agent'
+                        app_name: APP_NAME,
+                        user_id: userId,
+                        session_id: sessionId,
+                        new_message: { role: 'user', parts: [{ text: message }] },
+                        streaming: true
                     }),
                     signal: currentAbortController.signal
                 });
+
+                // A stale session id - agent redeployed, or the id was cached
+                // from an older deployment - makes run_sse 404. This is what
+                // used to require clearing localStorage by hand.
+                let response = await postTurn();
+                if (response.status === 404) {
+                    await createSession();
+                    response = await postTurn();
+                }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
