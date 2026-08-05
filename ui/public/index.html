@@ -157,6 +157,12 @@
 
         .message-content {
             flex: 1;
+            /* Without this the flex item's automatic minimum size is its
+               content width, so a wide results table stretches the message
+               past the chat column instead of scrolling inside it — and
+               .chat-container's overflow:hidden then clips the far columns
+               away entirely, with no way to reach them. */
+            min-width: 0;
             line-height: 1.6;
             overflow-x: auto;
         }
@@ -220,11 +226,22 @@
         /* Grid.js Dark Theme */
         .gridjs-container {
             margin: 16px 0;
+            /* Grid.js styles this inline-block, so it shrink-to-fits the table's
+               natural width and its own width:100% root then resolves against
+               that instead of the chat column — leaving .gridjs-wrapper nothing
+               to scroll. Forcing block + max-width hands the wrapper a real
+               boundary, so the table scrolls under a fixed search and pager. */
+            display: block;
+            max-width: 100%;
         }
 
         .gridjs-wrapper {
             border-radius: 8px;
             overflow: hidden;
+            /* Grid.js ships overflow:auto here; the shorthand above was
+               overriding it to hidden, which clipped every column past the
+               container edge rather than letting the table scroll. */
+            overflow-x: auto;
             border: 1px solid var(--border-color);
         }
 
@@ -499,6 +516,163 @@
         pre code {
             background: none;
             padding: 0;
+        }
+
+        /* ============================================
+           MOBILE / NARROW VIEWPORTS
+           ============================================ */
+
+        @media (max-width: 640px) {
+            /* Bound the page to the viewport so the transcript scrolls and the
+               composer stays put. With min-height the welcome block alone
+               already pushed the input below the fold on a small phone. dvh
+               tracks the browser chrome as it collapses. */
+            body {
+                height: 100vh;
+                height: 100dvh;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .chat-container {
+                padding: 12px;
+                /* Lets the flex child shrink so .messages-wrapper can scroll. */
+                min-height: 0;
+            }
+
+            .header {
+                padding: 10px 12px;
+            }
+
+            .header-title {
+                font-size: 15px;
+                gap: 8px;
+                min-width: 0;
+            }
+
+            .header-title svg {
+                width: 22px;
+                height: 22px;
+                flex-shrink: 0;
+            }
+
+            .header-controls {
+                gap: 8px;
+                flex-shrink: 0;
+            }
+
+            /* The dot alone carries the state; the word is repeated detail. */
+            .status-indicator span {
+                display: none;
+            }
+
+            .header-controls button {
+                padding: 7px 12px !important;
+                font-size: 13px;
+            }
+
+            .message {
+                padding: 12px;
+                gap: 10px;
+            }
+
+            .message-avatar {
+                width: 30px;
+                height: 30px;
+                font-size: 11px;
+            }
+
+            .welcome {
+                padding: 20px 8px;
+            }
+
+            .welcome h2 {
+                font-size: 19px;
+            }
+
+            .welcome p {
+                font-size: 14px;
+                margin-bottom: 18px;
+            }
+
+            .example-query {
+                padding: 7px 12px;
+                font-size: 12px;
+            }
+
+            .input-area {
+                padding: 10px;
+                gap: 8px;
+                margin-top: 12px;
+            }
+
+            /* 16px keeps iOS Safari from zooming the viewport on focus. */
+            .input-area textarea {
+                font-size: 16px;
+                min-width: 0;
+            }
+
+            .send-btn,
+            .cancel-btn {
+                padding: 8px 12px;
+                font-size: 13px;
+            }
+
+            .gridjs-container {
+                margin: 12px 0;
+            }
+
+            .gridjs-th,
+            .gridjs-td {
+                padding: 8px 10px !important;
+                font-size: 13px !important;
+            }
+
+            .sql-panel code {
+                font-size: 11.5px;
+            }
+        }
+
+        /* Landscape phones: height is the scarce axis, and width rules never
+           fire here — a phone on its side is ~844px wide. */
+        @media (max-height: 500px) and (min-width: 600px) {
+            body {
+                height: 100vh;
+                height: 100dvh;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .header {
+                padding: 8px 16px;
+            }
+
+            .header-title {
+                font-size: 15px;
+            }
+
+            .chat-container {
+                padding: 10px 16px;
+                min-height: 0;
+            }
+
+            .welcome {
+                padding: 12px 8px;
+            }
+
+            .welcome p {
+                margin-bottom: 12px;
+            }
+
+            .input-area {
+                padding: 10px;
+                margin-top: 10px;
+            }
+
+            /* Same iOS zoom rule as portrait — it is the same phone, sideways. */
+            .input-area textarea {
+                font-size: 16px;
+            }
         }
     </style>
 </head>
@@ -938,6 +1112,21 @@
             }
         }
 
+        // Undoes the one escaping pass formatMessage() applied. Table cells are
+        // parsed back out of innerHTML and handed to Grid.js as *data*, which
+        // renders them as text - so without this a supplier called
+        // "Nordic & Baltic" shows up literally as "Nordic &amp; Baltic".
+        //
+        // &amp; must be decoded last. A cell whose source text really was
+        // "&lt;" arrives here as "&amp;lt;"; decoding &amp; first would leave
+        // "&lt;" for the next rule to turn into "<", losing the original.
+        function decodeCell(text) {
+            return text
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&amp;/g, '&');
+        }
+
         // Parse markdown tables and render with Grid.js
         function renderGridTables(container) {
             // formatMessage() has already replaced every newline with <br>, but the
@@ -959,7 +1148,7 @@
                 // either side of the outer pipes - a blank cell in the middle is
                 // a real NULL and must be kept, or the row shifts left.
                 const splitRow = (row) => {
-                    const cells = row.split('|').map(cell => cell.trim());
+                    const cells = row.split('|').map(cell => decodeCell(cell.trim()));
                     if (cells[0] === '') cells.shift();
                     if (cells[cells.length - 1] === '') cells.pop();
                     return cells;

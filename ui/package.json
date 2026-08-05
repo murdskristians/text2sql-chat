@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Local UI for Text2SQL Agent with Grid.js table rendering",
   "main": "server.js",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"

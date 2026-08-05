@@ -1,6 +1,9 @@
 [build]
   # Nothing to compile: public/ is plain HTML, CSS and JS.
   publish = "public"
+  # Netlify still runs an install step for package.json, and it picks the
+  # package manager from the lockfile present. pnpm-lock.yaml must stay the
+  # only one committed - see the note in the repo .gitignore.
 
 [[redirects]]
   from = "/*"
