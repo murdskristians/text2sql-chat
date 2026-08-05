@@ -19,6 +19,13 @@ venv/
 # Node
 node_modules/
 
+# The UI standardises on pnpm. Netlify picks its package manager from whichever
+# lockfile it finds and installs with --frozen-lockfile, so a stray
+# package-lock.json from `npm install` desyncs from the lockfile CI actually
+# reads and the deploy fails with ERR_PNPM_OUTDATED_LOCKFILE.
+package-lock.json
+yarn.lock
+
 # OS
 .DS_Store
 Thumbs.db
